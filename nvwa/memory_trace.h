@@ -2,7 +2,7 @@
 // vim:tabstop=4:shiftwidth=4:expandtab:
 
 /*
- * Copyright (C) 2022 Wu Yongwei <wuyongwei at gmail dot com>
+ * Copyright (C) 2022-2025 Wu Yongwei <wuyongwei at gmail dot com>
  *
  * This software is provided 'as-is', without any express or implied
  * warranty.  In no event will the authors be held liable for any
@@ -32,7 +32,7 @@
  * Header file for tracing memory with contextual checkpoints.  The
  * current code requires a C++17-compliant compiler.
  *
- * @date  2022-04-07
+ * @date  2025-02-02
  */
 
 #ifndef NVWA_MEMORY_TRACE_H
@@ -46,6 +46,7 @@
 #include <stdio.h>              // FILE
 #include <new>                  // std::align_val_t
 #include "_nvwa.h"              // NVWA macros
+#include "context.h"            // nvwa::context/NVWA_CONTEXT_CHECKPOINT
 
 NVWA_NAMESPACE_BEGIN
 
@@ -56,25 +57,6 @@ size_t get_total_mem_alloc_cnt();
 extern bool new_autocheck_flag; // default to true: call check_leaks() on exit
 extern bool new_verbose_flag;   // default to false: no verbose information
 extern FILE* new_output_fp;     // default to stderr: output to console
-
-struct context {
-    const char* file;
-    const char* func;
-};
-
-bool operator==(const context& lhs, const context& rhs);
-bool operator!=(const context& lhs, const context& rhs);
-
-class checkpoint {
-public:
-    explicit checkpoint(const context& ctx);
-    ~checkpoint();
-    checkpoint(const checkpoint&) = delete;
-    checkpoint& operator=(const checkpoint&) = delete;
-
-private:
-    const context ctx_;
-};
 
 class memory_trace_counter {
 public:
@@ -91,24 +73,16 @@ static memory_trace_counter __memory_trace_count;
 
 NVWA_NAMESPACE_END
 
-#ifdef __GNUC__
-#define NVWA_MEMORY_CHECKPOINT()                                 \
-    NVWA::checkpoint NVWA_UNIQUE_NAME(memory_trace_checkpoint){  \
-        NVWA::context{__FILE__, __PRETTY_FUNCTION__}}
-#else
-#define NVWA_MEMORY_CHECKPOINT()                                 \
-    NVWA::checkpoint NVWA_UNIQUE_NAME(memory_trace_checkpoint){  \
-        NVWA::context{__FILE__, __func__}}
-#endif
+#define NVWA_MEMORY_CHECKPOINT NVWA_CONTEXT_CHECKPOINT
 
-void* operator new  (std::size_t size,
+void* operator new  (size_t size,
                      const NVWA::context& ctx);
-void* operator new[](std::size_t size,
+void* operator new[](size_t size,
                      const NVWA::context& ctx);
-void* operator new  (std::size_t size,
+void* operator new  (size_t size,
                      std::align_val_t align_val,
                      const NVWA::context& ctx);
-void* operator new[](std::size_t size,
+void* operator new[](size_t size,
                      std::align_val_t align_val,
                      const NVWA::context& ctx);
 

@@ -2,7 +2,7 @@
 // vim:tabstop=4:shiftwidth=4:expandtab:
 
 /*
- * Copyright (C) 2009-2022 Wu Yongwei <wuyongwei at gmail dot com>
+ * Copyright (C) 2009-2025 Wu Yongwei <wuyongwei at gmail dot com>
  *
  * This software is provided 'as-is', without any express or implied
  * warranty.  In no event will the authors be held liable for any
@@ -32,7 +32,7 @@
  * Definition of a fixed-capacity queue.  Using this file requires a
  * C++17-compliant compiler.
  *
- * @date  2023-06-16
+ * @date  2025-07-06
  */
 
 #ifndef NVWA_FC_QUEUE_H
@@ -42,7 +42,6 @@
 #include <atomic>               // std::atomic
 #include <memory>               // std::addressof/allocator/allocator_traits
 #include <new>                  // std::bad_alloc
-#include <type_traits>          // std::integral_constant/false_type/true_type
 #include <utility>              // std::move/swap
 #include "_nvwa.h"              // NVWA_NAMESPACE_*
 
@@ -51,22 +50,6 @@
 #endif
 
 NVWA_NAMESPACE_BEGIN
-
-namespace detail {
-
-template <typename _Alloc>
-inline void swap_allocator(_Alloc&, _Alloc&, std::false_type) noexcept
-{
-}
-
-template <typename _Alloc>
-inline void swap_allocator(_Alloc& lhs, _Alloc& rhs, std::true_type) noexcept
-{
-    using std::swap;
-    swap(lhs, rhs);
-}
-
-} /* namespace detail */
 
 /**
  * Class to represent a fixed-capacity queue.  This class has an
@@ -96,13 +79,12 @@ public:
     /**
      * Default-constructor that creates an empty queue.
      *
-     * It is not very useful, except as the target of an assignment.  Please
-     * notice that calling \c capacity() would not get the correct result at
-     * this moment.
+     * It is not very useful, except as the target of an assignment.
      *
      * @post            The following conditions will hold:
      *                  - <code>empty()</code>
      *                  - <code>full()</code>
+     *                  - <code>capacity() == 0</code>
      *                  - <code>size() == 0</code>
      */
     fc_queue() = default;
@@ -110,14 +92,13 @@ public:
     /**
      * Constructor that creates an empty queue.
      *
-     * It is not very useful, except as the target of an assignment.  Please
-     * notice that calling \c capacity() would not get the correct result at
-     * this moment.
+     * It is not very useful, except as the target of an assignment.
      *
      * @param alloc     the allocator to use
      * @post            The following conditions will hold:
      *                  - <code>empty()</code>
      *                  - <code>full()</code>
+     *                  - <code>capacity() == 0</code>
      *                  - <code>size() == 0</code>
      */
     constexpr explicit fc_queue(const allocator_type& alloc) noexcept
@@ -331,6 +312,12 @@ public:
      */
     size_type capacity() const noexcept
     {
+        if (_M_begin == nullptr) {
+            // We cannot initialize _M_end to _M_begin + 1 in the
+            // default constructor: compile-time pointer arithmetic
+            // on null pointer is forbidden.
+            return 0;
+        }
         return _M_end - _M_begin - 1;
     }
 
@@ -397,9 +384,9 @@ public:
     };
 
     /**
-     * Inserts a new element at the end of the queue.  The first element
-     * will be discarded if the queue is full.  The behaviour is
-     * different from \c write().
+     * Constructs a new element in place at the end of the queue.  The
+     * first element will be discarded if the queue is full.  The
+     * behaviour is different from \c write().
      *
      * @param args  arguments to construct a new element
      * @pre         <code>capacity() > 0</code>
@@ -410,7 +397,7 @@ public:
      * @see write
      */
     template <typename... _Targs>
-    void push(_Targs&&... args)
+    void emplace(_Targs&&... args)
     {
         assert(capacity() > 0);
         allocator_traits::construct(get_alloc(), std::addressof(*_M_tail),
@@ -419,6 +406,42 @@ public:
             pop();
         }
         self_increment(_M_tail);
+    }
+
+    /**
+     * Inserts a given element at the end of the queue.  The first
+     * element will be discarded if the queue is full.  The behaviour is
+     * different from \c write().
+     *
+     * @param value  an lvalue to insert
+     * @pre          <code>capacity() > 0</code>
+     * @post         <code>size() <= capacity() && back() == value</code>,
+     *               unless an exception is thrown, in which case this
+     *               queue is unchanged (strong exception safety is
+     *               guaranteed).
+     * @see write
+     */
+    void push(const _Tp& value)
+    {
+        emplace(value);
+    }
+
+    /**
+     * Inserts a given element at the end of the queue.  The first
+     * element will be discarded if the queue is full.  The behaviour is
+     * different from \c write().
+     *
+     * @param value  an rvalue to insert
+     * @pre          <code>capacity() > 0</code>
+     * @post         <code>size() <= capacity() && back() == value</code>,
+     *               unless an exception is thrown, in which case this
+     *               queue is unchanged (strong exception safety is
+     *               guaranteed).
+     * @see write
+     */
+    void push(_Tp&& value)
+    {
+        emplace(std::move(value));
     }
 
     /**
@@ -438,8 +461,9 @@ public:
 
     /**
      * Inserts a new element at the end of the queue when the queue is
-     * not full.  This is more performant than separate calls to \c
-     * full() and \c push(), especially when C++11 atomics are used.
+     * not full.  This is more performant than separate calls to
+     * \c full() and \c push() (or \c emplace()), especially when C++11
+     * atomics are used.
      *
      * @param args  arguments to construct a new element
      * @return      \c true if the new element is successfully inserted;
@@ -539,9 +563,11 @@ public:
     {
         assert(allocator_traits::propagate_on_container_swap::value ||
                get_alloc() == rhs.get_alloc());
-        detail::swap_allocator(
-            get_alloc(), rhs.get_alloc(),
-            typename allocator_traits::propagate_on_container_swap{});
+        if constexpr (allocator_traits::propagate_on_container_swap::
+                          value) {
+            using std::swap;
+            swap(get_alloc(), rhs.get_alloc());
+        }
         swap_pointer(_M_head,  rhs._M_head);
         swap_pointer(_M_tail,  rhs._M_tail);
         swap_pointer(_M_begin, rhs._M_begin);
@@ -578,17 +604,10 @@ private:
     {
         ptr = increment(ptr);
     }
-    void self_decrement(pointer& ptr) const noexcept
-    {
-        ptr = decrement(ptr);
-    }
     void self_increment(atomic_pointer& ptr) const noexcept
     {
-        ptr = increment(ptr.load(std::memory_order_relaxed));
-    }
-    void self_decrement(atomic_pointer& ptr) const noexcept
-    {
-        ptr = decrement(ptr.load(std::memory_order_relaxed));
+        ptr.store(increment(ptr.load(std::memory_order_relaxed)),
+                  std::memory_order_release);
     }
 
     void clear() noexcept

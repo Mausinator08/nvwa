@@ -2,7 +2,7 @@
 // vim:tabstop=4:shiftwidth=4:expandtab:
 
 /*
- * Copyright (C) 2004-2024 Wu Yongwei <wuyongwei at gmail dot com>
+ * Copyright (C) 2004-2025 Wu Yongwei <wuyongwei at gmail dot com>
  *
  * This software is provided 'as-is', without any express or implied
  * warranty.  In no event will the authors be held liable for any
@@ -31,7 +31,7 @@
  *
  * Implementation of debug versions of new and delete to check leakage.
  *
- * @date  2024-05-20
+ * @date  2025-05-22
  */
 
 #include <new>                  // std::bad_alloc/nothrow_t
@@ -192,6 +192,9 @@
 #ifndef _DEBUG_NEW_TAILCHECK
 #define _DEBUG_NEW_TAILCHECK 0
 #endif
+#if _DEBUG_NEW_TAILCHECK < 0
+#error "Invalid tail check length"
+#endif
 
 /**
  * @def _DEBUG_NEW_TAILCHECK_CHAR
@@ -270,7 +273,7 @@ bool new_verbose_flag = false;
 
 /**
  * Pointer to the output stream.  The default output is \e stderr, and
- * one may change it to a user stream if needed (say, #new_verbose_flag
+ * one may change it to a user stream if needed (say, nvwa#new_verbose_flag
  * is \c true and there are a lot of (de)allocations).
  */
 FILE* new_output_fp = stderr;
@@ -307,8 +310,7 @@ namespace {
  * @param alignment  alignment requested
  * @return           aligned size
  */
-inline constexpr uint32_t align(size_t s,
-                                size_t alignment = _DEBUG_NEW_ALIGNMENT)
+constexpr uint32_t align(size_t s, size_t alignment = _DEBUG_NEW_ALIGNMENT)
 {
     // 32 bits are enough for alignments
     return static_cast<uint32_t>((s + alignment - 1) & ~(alignment - 1));
@@ -628,7 +630,7 @@ void* debug_new_alloc(size_t size, size_t alignment = _DEBUG_NEW_ALIGNMENT)
 #if NVWA_WIN32
     return _aligned_malloc(size, alignment);
 #elif NVWA_UNIX
-    void* memptr;
+    void* memptr{};
     int result = posix_memalign(&memptr, alignment, size);
     if (result == 0) {
         return memptr;
@@ -676,7 +678,6 @@ void* alloc_mem(size_t size, const char* file, int line,
 #endif
     static_assert((_DEBUG_NEW_ALIGNMENT & (_DEBUG_NEW_ALIGNMENT - 1)) == 0,
                   "Alignment must be power of two");
-    static_assert(_DEBUG_NEW_TAILCHECK >= 0, "Invalid tail check length");
     assert(line >= 0);
     if (alignment < _DEBUG_NEW_ALIGNMENT) {
         alignment = _DEBUG_NEW_ALIGNMENT;
@@ -712,7 +713,7 @@ void* alloc_mem(size_t size, const char* file, int line,
     if (line == 0)
 #endif
     {
-        void* buffer [255];
+        void*  buffer[255];
         size_t buffer_length = sizeof(buffer) / sizeof(*buffer);
 
 #if NVWA_UNIX
@@ -797,12 +798,8 @@ void free_pointer(void* usr_ptr, void* addr, is_array_t is_array,
         _DEBUG_NEW_ERROR_ACTION;
     }
     if (is_array != ptr->is_array) {
-        const char* msg;
-        if (is_array) {
-            msg = "delete[] after new";
-        } else {
-            msg = "delete after new[]";
-        }
+        const char* msg =
+            is_array ? "delete[] after new" : "delete after new[]";
         fast_mutex_autolock lock(new_output_lock);
         fprintf(new_output_fp,
                 "%s: pointer %p (size %zu)\n\tat ",
