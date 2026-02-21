@@ -32,7 +32,7 @@
  * Definition of a fixed-capacity queue.  Using this file requires a
  * C++17-compliant compiler.
  *
- * @date  2025-07-06
+ * @date  2025-12-18
  */
 
 #ifndef NVWA_FC_QUEUE_H
@@ -59,9 +59,9 @@ NVWA_NAMESPACE_BEGIN
  *
  * @param _Tp     the type of elements in the queue
  * @param _Alloc  allocator to use for memory management
- * @pre           \a _Tp shall be \c CopyConstructible and \c
- *                Destructible, and \a _Alloc shall meet the allocator
- *                requirements (Table 28 in the C++11 spec).
+ * @pre           \a _Tp shall be \c CopyConstructible and \c Destructible,
+ *                and \a _Alloc shall meet the allocator requirements
+ *                (Table 28 in the C++11 spec).
  */
 template <class _Tp, class _Alloc = std::allocator<_Tp>>
 class fc_queue : private _Alloc {
